@@ -30,6 +30,36 @@ pub fn split_matching_bracket(
   Ok(#(in_brackets, end))
 }
 
+pub fn split_matching_bracket_reverse(
+  tokens: List(Token),
+) -> Result(#(List(Token), List(Token)), Error) {
+  let invert_brackets = fn(token) {
+    case token {
+      token.RoundOpen -> token.RoundClose
+      token.RoundClose -> token.RoundOpen
+      token.CurlyOpen -> token.CurlyClose
+      token.CurlyClose -> token.CurlyOpen
+      token.SquareOpen -> token.SquareClose
+      token.SquareClose -> token.SquareOpen
+      _ -> token
+    }
+  }
+
+  let invert_tokens = fn(tokens) {
+    tokens
+    |> list.reverse
+    |> list.map(invert_brackets)
+  }
+
+  tokens
+  |> invert_tokens
+  |> split_matching_bracket
+  |> result.map(fn(tokens) {
+    let #(in_brackets, left) = tokens
+    #(invert_tokens(left), invert_tokens(in_brackets))
+  })
+}
+
 fn split_matching_bracket_rec(
   tokens: List(Token),
   in_brackets: List(Token),

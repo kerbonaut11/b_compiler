@@ -34,10 +34,12 @@ pub fn lexer_test() {
     "
 extrn printf,malloc;
 
-X; Y 10; HELLO \"hello\";
+x; y 10; HELLO \"hello\";
 
 add(x,y) return x+y;
 main() {
+  auto a, b 10;
+  x = 10;
   printf(HELLO);
 }
 "

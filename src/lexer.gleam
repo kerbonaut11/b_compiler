@@ -1,6 +1,9 @@
 import error.{type Error}
+import expr.{type Expr}
+import gleam/bool
 import gleam/dict.{type Dict}
 import gleam/list
+import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/set.{type Set}
 import token.{type Token}
@@ -22,11 +25,18 @@ pub type Extrns =
   Set(String)
 
 pub type Function {
-  Function(params: List(String), body: List(Token))
+  Function(params: List(String), body: List(Statement))
 }
 
 pub type Functions =
-  dict.Dict(String, Function)
+  Dict(String, Function)
+
+pub type Statement {
+  AutoDeclaration(name: String, size: Int)
+  Assing(lhs: Expr, rhs: Expr)
+  Return(Option(Expr))
+  Call(Expr)
+}
 
 pub fn parse(
   tokens: List(Token),
@@ -41,19 +51,12 @@ fn parse_item(
   functions: Functions,
 ) -> Result(#(Globals, Extrns, Functions), error.Error) {
   case tokens {
-    [token.Ident(name), token.RoundOpen, ..end] -> {
+    [token.Ident(name), token.RoundOpen, ..] -> {
       use #(params, end) <- result.try(
-        token_utils.split_matching_bracket(list.prepend(end, token.RoundOpen)),
+        token_utils.split_matching_bracket(list.drop(tokens, 1)),
       )
       use params <- result.try(parse_list_of_ident(params, []))
-      use #(body, next) <- result.try(case end {
-        [token.CurlyOpen, ..] -> token_utils.split_matching_bracket(end)
-        _ -> {
-          let #(body, next) =
-            token_utils.split_at_outside_brackets(end, token.EndLine)
-          Ok(#(list.append(body, [token.EndLine]), next))
-        }
-      })
+      use #(body, next) <- result.try(parse_statment(end))
       let functions = dict.insert(functions, name, Function(params, body))
       parse_item(next, globals, extrns, functions)
     }
@@ -102,4 +105,88 @@ fn parse_list_of_ident(
     }
     [] -> Ok(idents)
   }
+}
+
+fn parse_statment(
+  tokens: List(Token),
+) -> Result(#(List(Statement), List(Token)), Error) {
+  echo tokens
+  case tokens {
+    [token.CurlyOpen, ..] -> {
+      use #(body, next) <- result.try(token_utils.split_matching_bracket(tokens))
+      use statements <- result.try(parse_compound_statment(body, []))
+      Ok(#(statements, next))
+    }
+
+    [token.KwAuto, ..end] -> {
+      let #(declarations, next) =
+        token_utils.split_at_outside_brackets(end, token.EndLine)
+      use declarations <- result.try(parse_auto_declarations(declarations, []))
+      Ok(#(list.map(declarations, fn(x) { AutoDeclaration(x.0, x.1) }), next))
+    }
+
+    [token.KwReturn, token.EndLine, ..next] -> {
+      Ok(#([Return(None)], next))
+    }
+
+    [token.KwReturn, ..end] -> {
+      let #(tokens, next) =
+        token_utils.split_at_outside_brackets(end, token.EndLine)
+      use expr <- result.try(expr.parse(tokens))
+      Ok(#([Return(Some(expr))], next))
+    }
+
+    [_, ..] -> {
+      let #(tokens, next) =
+        token_utils.split_at_outside_brackets(tokens, token.EndLine)
+      let #(lhs, rhs) =
+        token_utils.split_at_outside_brackets(tokens, token.Assign)
+
+      case rhs == [] {
+        True -> {
+          use expr <- result.try(expr.parse(tokens))
+          Ok(#([Call(expr)], next))
+        }
+
+        False -> {
+          use lhs <- result.try(expr.parse(lhs))
+          use rhs <- result.try(expr.parse(rhs))
+          Ok(#([Assing(lhs, rhs)], next))
+        }
+      }
+    }
+
+    [] -> Ok(#([], []))
+  }
+}
+
+fn parse_auto_declarations(
+  tokens: List(Token),
+  declarations: List(#(String, Int)),
+) -> Result(List(#(String, Int)), Error) {
+  case tokens {
+    [token.Ident(name), token.Comma, ..next] -> {
+      parse_auto_declarations(next, list.append(declarations, [#(name, 1)]))
+    }
+    [token.Ident(name)] -> {
+      Ok(list.append(declarations, [#(name, 1)]))
+    }
+    [token.Ident(name), token.IntLiteral(size), token.Comma, ..next] -> {
+      parse_auto_declarations(next, list.append(declarations, [#(name, size)]))
+    }
+    [token.Ident(name), token.IntLiteral(size)] -> {
+      Ok(list.append(declarations, [#(name, size)]))
+    }
+    [] -> Ok(declarations)
+    _ -> panic
+  }
+}
+
+fn parse_compound_statment(
+  tokens: List(Token),
+  statements: List(Statement),
+) -> Result(List(Statement), Error) {
+  use <- bool.guard(tokens == [], Ok(statements))
+  use #(statement, next) <- result.try(parse_statment(tokens))
+  parse_compound_statment(next, list.append(statements, statement))
 }
