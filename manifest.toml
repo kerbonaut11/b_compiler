@@ -3,11 +3,14 @@
 
 packages = [
   { name = "file_streams", version = "1.6.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "file_streams", source = "hex", outer_checksum = "309A2D3230E86309E298F1E8FD44AA6B9772AF279D518953F8C5604492842D0F" },
+  { name = "glam", version = "2.0.2", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "glam", source = "hex", outer_checksum = "4932A2D139AB0389E149396407F89654928D7B815E212BB02F13C66F53B1BBA1" },
   { name = "gleam_stdlib", version = "0.62.0", build_tools = ["gleam"], requirements = [], otp_app = "gleam_stdlib", source = "hex", outer_checksum = "DC8872BC0B8550F6E22F0F698CFE7F1E4BDA7312FDEB40D6C3F44C5B706C8310" },
   { name = "gleeunit", version = "1.6.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "gleeunit", source = "hex", outer_checksum = "63022D81C12C17B7F1A60E029964E830A4CBD846BBC6740004FC1F1031AE0326" },
+  { name = "pprint", version = "1.0.6", build_tools = ["gleam"], requirements = ["glam", "gleam_stdlib"], otp_app = "pprint", source = "hex", outer_checksum = "4E9B34AE03B2E81D60F230B9BAF1792BE1AC37AFB5564B8DEBEE56BAEC866B7D" },
 ]
 
 [requirements]
 file_streams = { version = ">= 1.6.0 and < 2.0.0" }
 gleam_stdlib = { version = ">= 0.44.0 and < 2.0.0" }
 gleeunit = { version = ">= 1.0.0 and < 2.0.0" }
+pprint = { version = ">= 1.0.6 and < 2.0.0" }

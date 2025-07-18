@@ -1,9 +1,14 @@
+import file_streams/file_stream
+import file_streams/text_encoding
 import gleam/list
 import gleeunit
+import ir_compiler
 import lexer
+import pprint
 import token
 import token_utils
 import tokenizer
+import x86
 
 pub fn main() -> Nil {
   gleeunit.main()
@@ -34,19 +39,25 @@ pub fn lexer_test() {
     "
 extrn printf,malloc;
 
-x; y 10; HELLO \"hello\";
+x; y 10; HELLO \"hello\"; LANGUAGE \"b\";
 
 add(x,y) return x+y;
 main() {
   auto a, b 10;
-  x = 10;
+  a = 10;
+  a = \"World\";
+  a = 1+2*2+1;
   printf(HELLO);
 }
 "
   let assert Ok(tokens) = tokenizer.parse(src)
   echo tokens
-  let assert Ok(#(globals, extrns, functions)) = lexer.parse(tokens)
-  echo globals
-  echo extrns
-  echo functions
+  let assert Ok(program) = lexer.parse(tokens)
+  pprint.debug(program)
+  let assert Ok(program) = ir_compiler.compile(program)
+  pprint.debug(program)
+
+  let assert Ok(file) =
+    file_stream.open_write_text("test/build/test.asm", text_encoding.Unicode)
+  let assert Ok(_) = x86.compile(file, program)
 }

@@ -8,7 +8,3 @@ pub type Error {
   ExpectedTokenAfter(Token)
   ExpectedToken(expected: Token, got: Token)
 }
-
-pub fn from_io(err: file_stream_error.FileStreamError) -> Error {
-  Io(err)
-}

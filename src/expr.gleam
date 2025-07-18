@@ -1,4 +1,5 @@
 import error.{type Error}
+import gleam/bool
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
@@ -11,6 +12,19 @@ pub type BinaryOp {
   Mul
   Div
   Mod
+
+  And
+  Or
+  Xor
+  Shl
+  Shr
+
+  Eq
+  Ne
+  Lt
+  Le
+  Gt
+  Ge
 }
 
 pub type UnaryOp {
@@ -33,6 +47,7 @@ pub type Expr {
 }
 
 pub fn parse(tokens: List(Token)) -> Result(Expr, Error) {
+  echo tokens
   case tokens {
     [token.IntLiteral(x)] -> Ok(IntLiteral(x))
     [token.StringLiteral(x)] -> Ok(StringLiteral(x))
@@ -62,11 +77,11 @@ fn try_parse_unary_op(tokens: List(Token)) -> Result(Expr, Error) {
       use val <- result.try(parse(list.drop(tokens, 1)))
       Ok(Unary(op, val))
     }
-    Error(_) -> try_misc_expr(tokens)
+    Error(_) -> try_parse_misc_expr(tokens)
   }
 }
 
-fn try_misc_expr(tokens: List(Token)) -> Result(Expr, Error) {
+fn try_parse_misc_expr(tokens: List(Token)) -> Result(Expr, Error) {
   let assert Ok(last) = list.last(tokens)
   case last {
     token.RoundClose -> {
@@ -77,7 +92,7 @@ fn try_misc_expr(tokens: List(Token)) -> Result(Expr, Error) {
         [] -> parse(in_brackets)
         _ -> {
           use function <- result.try(parse(lhs))
-          let args = []
+          use args <- result.try(parse_args(in_brackets, []))
           Ok(Call(function, args))
         }
       }
@@ -91,13 +106,36 @@ fn try_misc_expr(tokens: List(Token)) -> Result(Expr, Error) {
       use idx <- result.try(parse(in_brackets))
       Ok(Index(array, idx))
     }
-    _ -> panic
+    _ -> {
+      echo tokens
+      panic
+    }
   }
+}
+
+fn parse_args(
+  tokens: List(Token),
+  args: List(Expr),
+) -> Result(List(Expr), Error) {
+  use <- bool.guard(tokens == [], Ok(args))
+  let #(left, right) =
+    token_utils.split_at_outside_brackets(tokens, token.Comma)
+  use arg <- result.try(parse(left))
+  parse_args(right, list.append(args, [arg]))
 }
 
 fn token_to_binary_op(token: Token) -> Result(BinaryOp, Nil) {
   case token {
     token.OpAdd -> Ok(Add)
+    token.OpSub -> Ok(Sub)
+    token.OpMul -> Ok(Mul)
+    token.OpDiv -> Ok(Div)
+    token.OpMod -> Ok(Mod)
+    token.OpAnd -> Ok(And)
+    token.OpOr -> Ok(Or)
+    token.OpXor -> Ok(Xor)
+    token.OpShl -> Ok(Shl)
+    token.OpShr -> Ok(Shr)
     _ -> Error(Nil)
   }
 }
@@ -116,21 +154,27 @@ fn op_priority(op: BinaryOp) -> Int {
   case op {
     Add | Sub -> 0
     Mul | Div | Mod -> 1
+    Shl | Shr -> 2
+    And | Or | Xor -> 3
+    Eq | Ne | Lt | Le | Gt | Ge -> 4
   }
 }
 
 fn lowest_priority_op(tokens: List(Token)) -> Option(#(BinaryOp, Int)) {
-  let #(_, idx, op) =
-    list.index_fold(tokens, #(999, None, Add), fn(lowest, token, index) {
-      let #(lowest_priority, _, _) = lowest
+  let #(_, idx, op, _) =
+    list.index_fold(tokens, #(999, None, Add, 0), fn(loop_data, token, index) {
+      let #(lowest_priority, idx, op, depth) = loop_data
+      let depth = depth + token_utils.bracket_depth(token)
       case token_to_binary_op(token) {
-        Ok(op) ->
-          case op_priority(op) {
-            prio if prio <= lowest_priority -> #(prio, Some(index), op)
-            _ -> lowest
+        Ok(current_op) -> {
+          let priority = op_priority(current_op)
+          case priority <= lowest_priority && depth == 0 {
+            True -> #(priority, Some(index), current_op, depth)
+            False -> #(lowest_priority, idx, op, depth)
           }
+        }
 
-        Error(_) -> lowest
+        Error(_) -> #(lowest_priority, idx, op, depth)
       }
     })
   case idx {

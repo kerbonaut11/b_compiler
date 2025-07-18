@@ -18,38 +18,49 @@ pub type Global {
   Global(init_val: Constant, id: Int)
 }
 
-pub type Globals =
-  Dict(String, Global)
-
-pub type Extrns =
-  Set(String)
-
 pub type Function {
   Function(params: List(String), body: List(Statement))
 }
 
-pub type Functions =
-  Dict(String, Function)
-
 pub type Statement {
-  AutoDeclaration(name: String, size: Int)
+  AutoDeclaration(name: String, size: Option(Int))
   Assing(lhs: Expr, rhs: Expr)
   Return(Option(Expr))
-  Call(Expr)
+  Expr(Expr)
 }
 
-pub fn parse(
-  tokens: List(Token),
-) -> Result(#(Globals, Extrns, Functions), error.Error) {
-  parse_item(tokens, dict.new(), set.new(), dict.new())
+pub type Program {
+  Program(
+    globals: Dict(String, Global),
+    functions: Dict(String, Function),
+    extrns: Set(String),
+  )
 }
 
-fn parse_item(
+fn add_function(program: Program, name: String, function: Function) -> Program {
+  Program(..program, functions: dict.insert(program.functions, name, function))
+}
+
+fn add_global(program: Program, name: String, init_val: Constant) -> Program {
+  let global = Global(init_val, id: dict.size(program.globals))
+  Program(..program, globals: dict.insert(program.globals, name, global))
+}
+
+fn add_extrn(program: Program, name: String) -> Program {
+  Program(..program, extrns: set.insert(program.extrns, name))
+}
+
+pub fn parse(tokens: List(Token)) -> Result(Program, error.Error) {
+  parse_items(
+    tokens,
+    Program(globals: dict.new(), functions: dict.new(), extrns: set.new()),
+  )
+}
+
+fn parse_items(
   tokens: List(Token),
-  globals: Globals,
-  extrns: Extrns,
-  functions: Functions,
-) -> Result(#(Globals, Extrns, Functions), error.Error) {
+  program: Program,
+) -> Result(Program, error.Error) {
   case tokens {
     [token.Ident(name), token.RoundOpen, ..] -> {
       use #(params, end) <- result.try(
@@ -57,35 +68,30 @@ fn parse_item(
       )
       use params <- result.try(parse_list_of_ident(params, []))
       use #(body, next) <- result.try(parse_statment(end))
-      let functions = dict.insert(functions, name, Function(params, body))
-      parse_item(next, globals, extrns, functions)
+      parse_items(next, add_function(program, name, Function(params, body)))
     }
 
     [token.Ident(name), token.EndLine, ..next] -> {
-      let id = dict.size(globals)
-      let globals = dict.insert(globals, name, Global(IntConst(0), id))
-      parse_item(next, globals, extrns, functions)
+      parse_items(next, add_global(program, name, IntConst(0)))
     }
     [token.Ident(name), token.StringLiteral(x), token.EndLine, ..next] -> {
-      let id = dict.size(globals)
-      let globals = dict.insert(globals, name, Global(StringConst(x), id))
-      parse_item(next, globals, extrns, functions)
+      parse_items(next, add_global(program, name, StringConst(x)))
     }
     [token.Ident(name), token.IntLiteral(x), token.EndLine, ..next] -> {
-      let id = dict.size(globals)
-      let globals = dict.insert(globals, name, Global(IntConst(x), id))
-      parse_item(next, globals, extrns, functions)
+      parse_items(next, add_global(program, name, IntConst(x)))
     }
 
     [token.KwExtern, ..end] -> {
       let #(names, next) =
         token_utils.split_at_outside_brackets(end, token.EndLine)
       use names <- result.try(parse_list_of_ident(names, []))
-      let extrns = set.union(extrns, set.from_list(names))
-      parse_item(next, globals, extrns, functions)
+      parse_items(next, list.fold(names, program, add_extrn))
     }
-    [] -> Ok(#(globals, extrns, functions))
-    _ -> panic
+    [] -> Ok(program)
+    _ -> {
+      echo tokens
+      panic
+    }
   }
 }
 
@@ -110,7 +116,6 @@ fn parse_list_of_ident(
 fn parse_statment(
   tokens: List(Token),
 ) -> Result(#(List(Statement), List(Token)), Error) {
-  echo tokens
   case tokens {
     [token.CurlyOpen, ..] -> {
       use #(body, next) <- result.try(token_utils.split_matching_bracket(tokens))
@@ -122,7 +127,7 @@ fn parse_statment(
       let #(declarations, next) =
         token_utils.split_at_outside_brackets(end, token.EndLine)
       use declarations <- result.try(parse_auto_declarations(declarations, []))
-      Ok(#(list.map(declarations, fn(x) { AutoDeclaration(x.0, x.1) }), next))
+      Ok(#(list.map(declarations, fn(x) { AutoDeclaration(x.0, None) }), next))
     }
 
     [token.KwReturn, token.EndLine, ..next] -> {
@@ -145,7 +150,7 @@ fn parse_statment(
       case rhs == [] {
         True -> {
           use expr <- result.try(expr.parse(tokens))
-          Ok(#([Call(expr)], next))
+          Ok(#([Expr(expr)], next))
         }
 
         False -> {
@@ -162,20 +167,23 @@ fn parse_statment(
 
 fn parse_auto_declarations(
   tokens: List(Token),
-  declarations: List(#(String, Int)),
-) -> Result(List(#(String, Int)), Error) {
+  declarations: List(#(String, Option(Int))),
+) -> Result(List(#(String, Option(Int))), Error) {
   case tokens {
     [token.Ident(name), token.Comma, ..next] -> {
-      parse_auto_declarations(next, list.append(declarations, [#(name, 1)]))
+      parse_auto_declarations(next, list.append(declarations, [#(name, None)]))
     }
     [token.Ident(name)] -> {
-      Ok(list.append(declarations, [#(name, 1)]))
+      Ok(list.append(declarations, [#(name, None)]))
     }
     [token.Ident(name), token.IntLiteral(size), token.Comma, ..next] -> {
-      parse_auto_declarations(next, list.append(declarations, [#(name, size)]))
+      parse_auto_declarations(
+        next,
+        list.append(declarations, [#(name, Some(size))]),
+      )
     }
     [token.Ident(name), token.IntLiteral(size)] -> {
-      Ok(list.append(declarations, [#(name, size)]))
+      Ok(list.append(declarations, [#(name, Some(size))]))
     }
     [] -> Ok(declarations)
     _ -> panic
