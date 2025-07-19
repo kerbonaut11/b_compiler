@@ -68,6 +68,7 @@ fn parse_items(
       )
       use params <- result.try(parse_list_of_ident(params, []))
       use #(body, next) <- result.try(parse_statment(end))
+      let body = list.append(body, [Return(None)])
       parse_items(next, add_function(program, name, Function(params, body)))
     }
 

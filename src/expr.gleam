@@ -1,38 +1,11 @@
 import error.{type Error}
 import gleam/bool
 import gleam/list
-import gleam/option.{type Option, None, Some}
+import gleam/option.{None, Some}
 import gleam/result
+import op.{type BinaryOp, type UnaryOp}
 import token.{type Token}
 import token_utils
-
-pub type BinaryOp {
-  Add
-  Sub
-  Mul
-  Div
-  Mod
-
-  And
-  Or
-  Xor
-  Shl
-  Shr
-
-  Eq
-  Ne
-  Lt
-  Le
-  Gt
-  Ge
-}
-
-pub type UnaryOp {
-  Ref
-  Deref
-  Neg
-  Not
-}
 
 pub type Expr {
   Ident(String)
@@ -58,7 +31,7 @@ pub fn parse(tokens: List(Token)) -> Result(Expr, Error) {
 }
 
 fn try_parse_binary_op(tokens: List(Token)) -> Result(Expr, Error) {
-  case lowest_priority_op(tokens) {
+  case op.find_lowest_priority(tokens) {
     Some(#(op, idx)) -> {
       let #(lhs, rhs) = list.split(tokens, idx)
       let rhs = list.drop(rhs, 1)
@@ -72,7 +45,7 @@ fn try_parse_binary_op(tokens: List(Token)) -> Result(Expr, Error) {
 
 fn try_parse_unary_op(tokens: List(Token)) -> Result(Expr, Error) {
   let assert Ok(first) = list.first(tokens)
-  case token_to_unary_op(first) {
+  case op.token_to_unary(first) {
     Ok(op) -> {
       use val <- result.try(parse(list.drop(tokens, 1)))
       Ok(Unary(op, val))
@@ -122,63 +95,4 @@ fn parse_args(
     token_utils.split_at_outside_brackets(tokens, token.Comma)
   use arg <- result.try(parse(left))
   parse_args(right, list.append(args, [arg]))
-}
-
-fn token_to_binary_op(token: Token) -> Result(BinaryOp, Nil) {
-  case token {
-    token.OpAdd -> Ok(Add)
-    token.OpSub -> Ok(Sub)
-    token.OpMul -> Ok(Mul)
-    token.OpDiv -> Ok(Div)
-    token.OpMod -> Ok(Mod)
-    token.OpAnd -> Ok(And)
-    token.OpOr -> Ok(Or)
-    token.OpXor -> Ok(Xor)
-    token.OpShl -> Ok(Shl)
-    token.OpShr -> Ok(Shr)
-    _ -> Error(Nil)
-  }
-}
-
-fn token_to_unary_op(token: Token) -> Result(UnaryOp, Nil) {
-  case token {
-    token.OpRef -> Ok(Ref)
-    token.OpDeref -> Ok(Deref)
-    token.OpNeg -> Ok(Neg)
-    token.OpNot -> Ok(Not)
-    _ -> Error(Nil)
-  }
-}
-
-fn op_priority(op: BinaryOp) -> Int {
-  case op {
-    Add | Sub -> 0
-    Mul | Div | Mod -> 1
-    Shl | Shr -> 2
-    And | Or | Xor -> 3
-    Eq | Ne | Lt | Le | Gt | Ge -> 4
-  }
-}
-
-fn lowest_priority_op(tokens: List(Token)) -> Option(#(BinaryOp, Int)) {
-  let #(_, idx, op, _) =
-    list.index_fold(tokens, #(999, None, Add, 0), fn(loop_data, token, index) {
-      let #(lowest_priority, idx, op, depth) = loop_data
-      let depth = depth + token_utils.bracket_depth(token)
-      case token_to_binary_op(token) {
-        Ok(current_op) -> {
-          let priority = op_priority(current_op)
-          case priority <= lowest_priority && depth == 0 {
-            True -> #(priority, Some(index), current_op, depth)
-            False -> #(lowest_priority, idx, op, depth)
-          }
-        }
-
-        Error(_) -> #(lowest_priority, idx, op, depth)
-      }
-    })
-  case idx {
-    Some(idx) -> Some(#(op, idx))
-    None -> None
-  }
 }

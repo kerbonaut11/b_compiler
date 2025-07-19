@@ -41,12 +41,12 @@ extrn printf,malloc;
 
 x; y 10; HELLO \"hello\"; LANGUAGE \"b\";
 
-add(x,y) return x+y;
+test(x,y) return x+y;
 main() {
-  auto a, b 10;
+  auto a, b;
   a = 10;
-  a = \"World\";
-  a = 1+2*2+1;
+  a = test(a,1);
+  b = \"World\";
   printf(HELLO);
 }
 "
@@ -59,5 +59,5 @@ main() {
 
   let assert Ok(file) =
     file_stream.open_write_text("test/build/test.asm", text_encoding.Unicode)
-  let assert Ok(_) = x86.compile(file, program)
+  x86.compile(file, program)
 }

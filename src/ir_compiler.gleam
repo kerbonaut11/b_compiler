@@ -11,6 +11,7 @@ import gleam/set
 import gleam/string
 import ir.{type Ir}
 import lexer.{type Function, type Global, type Program, type Statement}
+import op
 
 type StringData {
   StringData(offset: Int, offsets: Dict(String, Int), ordered: List(String))
@@ -170,16 +171,7 @@ fn compile_function(
       let dest = case ir {
         ir.LoadString(dest, _)
         | ir.LoadInt(dest, _)
-        | ir.Add(dest, _)
-        | ir.Sub(dest, _)
-        | ir.Mul(dest, _)
-        | ir.Div(dest, _)
-        | ir.Mod(dest, _)
-        | ir.And(dest, _)
-        | ir.Or(dest, _)
-        | ir.Xor(dest, _)
-        | ir.Shl(dest, _)
-        | ir.Shr(dest, _)
+        | ir.BinaryOp(_, dest, _)
         | ir.Not(dest)
         | ir.Neg(dest)
         | ir.Index(dest, _)
@@ -189,14 +181,12 @@ fn compile_function(
         | ir.GetArg(dest, _)
         | ir.GetArgRef(dest, _)
         | ir.GetAuto(dest, _)
-        | ir.SetAuto(dest, _)
         | ir.GetAutoRef(dest, _)
         | ir.GetGlobal(dest, _)
-        | ir.SetGlobal(dest, _)
         | ir.GetGlobalRef(dest, _)
-        | ir.GetName(dest, _)
+        | ir.LoadName(dest, _)
         | ir.Call(dest) -> dest
-        ir.SetArg(_) | ir.Return -> 0
+        ir.PushArg(_) | ir.Return | ir.SetAuto(_, _) | ir.SetGlobal(_, _) -> 0
       }
 
       int.max(dest, max)
@@ -260,6 +250,7 @@ fn compile_function_rec(
 ) -> Result(#(List(Ir), Int), error.Error) {
   use <- bool.guard(statements == [], Ok(#(state.ir, state.max_var_count)))
   let assert Ok(statement) = list.first(statements)
+  echo state.ir
 
   case statement {
     lexer.AutoDeclaration(name, size: None) -> {
@@ -267,7 +258,27 @@ fn compile_function_rec(
     }
 
     lexer.Assing(lhs, rhs) -> {
-      compile_function_rec(list.drop(statements, 1), state)
+      use rhs_ir <- result.try(compile_expr(0, rhs, state))
+      use lhs_ir <- result.try(case lhs {
+        expr.Ident(name) -> {
+          case name_storage(state, name) {
+            Some(Auto(x)) -> Ok([ir.SetAuto(0, x)])
+            Some(Global(x)) -> Ok([ir.SetAuto(0, x)])
+            Some(Arg(x)) -> todo
+            Some(Name(x)) -> todo
+            None -> todo
+          }
+        }
+
+        _ -> todo
+      })
+      compile_function_rec(
+        list.drop(statements, 1),
+        FunctionCompileState(
+          ..state,
+          ir: state.ir |> list.append(rhs_ir) |> list.append(lhs_ir),
+        ),
+      )
     }
 
     lexer.Expr(expr) -> {
@@ -296,31 +307,31 @@ fn compile_expr(
   state: FunctionCompileState,
 ) -> Result(List(Ir), error.Error) {
   case expr {
-    expr.IntLiteral(x) -> Ok(list.append(state.ir, [ir.LoadInt(dest, x)]))
+    expr.IntLiteral(x) -> Ok([ir.LoadInt(dest, x)])
     expr.StringLiteral(x) -> {
       let offset = string_constant_offset(state.str_data, x)
-      Ok(list.append(state.ir, [ir.LoadString(dest, offset)]))
+      Ok([ir.LoadString(dest, offset)])
     }
     expr.Ident(name) ->
       case name_storage(state, name) {
-        Some(Auto(x)) -> Ok(list.append(state.ir, [ir.GetAuto(dest, x)]))
-        Some(Arg(x)) -> Ok(list.append(state.ir, [ir.GetArg(dest, x)]))
-        Some(Global(x)) -> Ok(list.append(state.ir, [ir.GetGlobal(dest, x)]))
-        Some(Name(x)) -> Ok(list.append(state.ir, [ir.GetName(dest, x)]))
+        Some(Auto(x)) -> Ok([ir.GetAuto(dest, x)])
+        Some(Arg(x)) -> Ok([ir.GetArg(dest, x)])
+        Some(Global(x)) -> Ok([ir.GetGlobal(dest, x)])
+        Some(Name(x)) -> Ok([ir.LoadName(dest, x)])
         None -> todo
       }
 
-    expr.Unary(expr.Ref, val) -> {
+    expr.Unary(op.Ref, val) -> {
       todo
     }
 
     expr.Unary(op, val) -> {
       use val <- result.try(compile_expr(dest, val, state))
       let op_ir = case op {
-        expr.Deref -> ir.Load(dest)
-        expr.Not -> ir.Not(dest)
-        expr.Neg -> ir.Neg(dest)
-        expr.Ref -> panic
+        op.Deref -> ir.Load(dest)
+        op.Not -> ir.Not(dest)
+        op.Neg -> ir.Neg(dest)
+        op.Ref -> panic
       }
       Ok(list.append(val, [op_ir]))
     }
@@ -328,21 +339,11 @@ fn compile_expr(
     expr.Binary(op, lhs, rhs) -> {
       use lhs <- result.try(compile_expr(dest, lhs, state))
       use rhs <- result.try(compile_expr(dest + 1, rhs, state))
-      let op_ir = case op {
-        expr.Add -> ir.Add(dest, dest + 1)
-        expr.Sub -> ir.Sub(dest, dest + 1)
-        expr.Mul -> ir.Mul(dest, dest + 1)
-        expr.Div -> ir.Div(dest, dest + 1)
-        expr.Mod -> ir.Mod(dest, dest + 1)
-        expr.And -> ir.And(dest, dest + 1)
-        expr.Or -> ir.Or(dest, dest + 1)
-        expr.Xor -> ir.Xor(dest, dest + 1)
-        expr.Shl -> ir.Shl(dest, dest + 1)
-        expr.Shr -> ir.Shr(dest, dest + 1)
-        _ -> todo
-      }
-
-      Ok(lhs |> list.append(rhs) |> list.append([op_ir]))
+      Ok(
+        lhs
+        |> list.append(rhs)
+        |> list.append([ir.BinaryOp(op, dest, dest + 1)]),
+      )
     }
 
     expr.Index(array, idx) -> {
@@ -352,11 +353,11 @@ fn compile_expr(
     }
 
     expr.Call(function, args) -> {
-      use array <- result.try(compile_expr(dest, function, state))
+      use function <- result.try(compile_expr(dest, function, state))
       use ir <- result.try(
-        list.try_fold(args, array, fn(ir, arg) {
+        list.try_fold(args, function, fn(ir, arg) {
           use arg_ir <- result.try(compile_expr(dest + 1, arg, state))
-          Ok(ir |> list.append(arg_ir) |> list.append([ir.SetArg(dest + 1)]))
+          Ok(ir |> list.append(arg_ir) |> list.append([ir.PushArg(dest + 1)]))
         }),
       )
       Ok(list.append(ir, [ir.Call(dest)]))

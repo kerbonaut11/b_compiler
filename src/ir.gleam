@@ -1,18 +1,11 @@
+import op
+
 pub type Ir {
   LoadInt(dest: Int, val: Int)
   LoadString(dest: Int, offset: Int)
+  LoadName(dest: Int, name: String)
 
-  Add(dest: Int, src: Int)
-  Sub(dest: Int, src: Int)
-  Mul(dest: Int, src: Int)
-  Div(dest: Int, src: Int)
-  Mod(dest: Int, src: Int)
-
-  And(dest: Int, src: Int)
-  Or(dest: Int, src: Int)
-  Xor(dest: Int, src: Int)
-  Shl(dest: Int, src: Int)
-  Shr(dest: Int, src: Int)
+  BinaryOp(op: op.BinaryOp, dest: Int, src: Int)
 
   Not(dest: Int)
   Neg(dest: Int)
@@ -34,9 +27,7 @@ pub type Ir {
   SetGlobal(dest: Int, idx: Int)
   GetGlobalRef(dest: Int, idx: Int)
 
-  GetName(dest: Int, name: String)
-
-  SetArg(src: Int)
+  PushArg(src: Int)
   Call(dest: Int)
   Return
 }
