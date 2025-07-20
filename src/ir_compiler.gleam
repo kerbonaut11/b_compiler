@@ -185,6 +185,7 @@ fn compile_function(
         | ir.GetGlobal(dest, _)
         | ir.GetGlobalRef(dest, _)
         | ir.LoadName(dest, _)
+        | ir.GetTempRef(dest)
         | ir.Call(dest) -> dest
         ir.PushArg(_) | ir.Return | ir.SetAuto(_, _) | ir.SetGlobal(_, _) -> 0
       }
@@ -322,7 +323,27 @@ fn compile_expr(
       }
 
     expr.Unary(op.Ref, val) -> {
-      todo
+      case val {
+        expr.Ident(name) ->
+          case name_storage(state, name) {
+            Some(Auto(x)) -> Ok([ir.GetAutoRef(dest, x)])
+            Some(Arg(x)) -> Ok([ir.GetArgRef(dest, x)])
+            Some(Global(x)) -> Ok([ir.GetGlobalRef(dest, x)])
+            Some(Name(x)) -> Ok([ir.LoadName(dest, x), ir.GetTempRef(dest)])
+            None -> todo
+          }
+
+        expr.Index(array, idx) -> {
+          use array <- result.try(compile_expr(dest, array, state))
+          use idx <- result.try(compile_expr(dest + 1, idx, state))
+          Ok(
+            array
+            |> list.append(idx)
+            |> list.append([ir.RefIndex(dest, dest + 1)]),
+          )
+        }
+        _ -> todo
+      }
     }
 
     expr.Unary(op, val) -> {

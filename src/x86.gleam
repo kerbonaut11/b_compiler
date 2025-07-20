@@ -193,8 +193,6 @@ fn compile_function_ir(
   use <- bool.guard(ir == [], Nil)
   let assert Ok(op) = list.first(ir)
 
-  echo register_state
-
   let register_state = case op {
     ir.LoadInt(dest, x) -> {
       let #(register_state, register) =
@@ -230,6 +228,16 @@ fn compile_function_ir(
       register_state
     }
 
+    ir.GetArgRef(dest, arg_idx) -> {
+      let #(register_state, register) =
+        allocate_register(file, register_state, dest)
+      write_ln_indented_fmt(file, "lea ~s, ~s", #(
+        register_name(register),
+        arg_ptr(arg_idx),
+      ))
+      register_state
+    }
+
     ir.GetAuto(dest, auto_idx) -> {
       let #(register_state, register) =
         allocate_register(file, register_state, dest)
@@ -245,6 +253,16 @@ fn compile_function_ir(
       write_ln_indented_fmt(file, "mov ~s, ~s", #(
         auto_ptr(function, auto_idx),
         register_name(src),
+      ))
+      register_state
+    }
+
+    ir.GetAutoRef(dest, auto_idx) -> {
+      let #(register_state, register) =
+        allocate_register(file, register_state, dest)
+      write_ln_indented_fmt(file, "lea ~s, ~s", #(
+        register_name(register),
+        auto_ptr(function, auto_idx),
       ))
       register_state
     }
@@ -266,6 +284,39 @@ fn compile_function_ir(
         register_name(src),
       ))
       register_state
+    }
+
+    ir.GetGlobalRef(dest, offset) -> {
+      let #(register_state, register) =
+        allocate_register(file, register_state, dest)
+      write_ln_indented_fmt(file, "lea ~s, dword [globals+~b]", #(
+        register_name(register),
+        offset * word_size,
+      ))
+      register_state
+    }
+
+    ir.GetTempRef(dest) -> {
+      case temp_storage(register_state, dest) {
+        InRegister(register) -> {
+          let register_state = move_out_register(file, register_state, register)
+          write_ln_indented_fmt(file, "lea ~s, ~s", #(
+            register_name(register),
+            temp_ptr(dest),
+          ))
+          register_state
+        }
+
+        OnStack -> {
+          let #(register_state, register) =
+            allocate_register(file, register_state, dest)
+          write_ln_indented_fmt(file, "lea ~s, ~s", #(
+            register_name(register),
+            temp_ptr(dest),
+          ))
+          register_state
+        }
+      }
     }
 
     ir.PushArg(src) -> {
@@ -392,7 +443,7 @@ fn compile_function_ir(
       write_ln_indented(file, "ret")
       register_state
     }
-    _ -> todo
+    //_ -> todo
   }
   compile_function_ir(file, program, function, register_state, list.drop(ir, 1))
 }

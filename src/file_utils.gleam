@@ -24,7 +24,6 @@ pub fn write_fmt(file: fs.FileStream, fmt: String, args: a) -> Nil {
       panic
     }
   }
-  echo str
   let assert Ok(_) = fs.write_chars(file, str)
   Nil
 }

@@ -20,12 +20,14 @@ pub type Ir {
   GetArgRef(dest: Int, idx: Int)
 
   GetAuto(dest: Int, idx: Int)
-  SetAuto(dest: Int, idx: Int)
+  SetAuto(src: Int, idx: Int)
   GetAutoRef(dest: Int, idx: Int)
 
   GetGlobal(dest: Int, idx: Int)
-  SetGlobal(dest: Int, idx: Int)
+  SetGlobal(src: Int, idx: Int)
   GetGlobalRef(dest: Int, idx: Int)
+
+  GetTempRef(dest: Int)
 
   PushArg(src: Int)
   Call(dest: Int)

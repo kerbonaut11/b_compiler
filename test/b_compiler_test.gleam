@@ -46,6 +46,9 @@ main() {
   auto a, b;
   a = 10;
   a = test(a,1);
+  a = &a;
+  a = a[1];
+  a = &a[1];
   b = \"World\";
   printf(HELLO);
 }
