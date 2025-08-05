@@ -2,6 +2,7 @@ pub type Token {
   EndLine
   Comma
   Assign
+  Colon
 
   RoundOpen
   RoundClose

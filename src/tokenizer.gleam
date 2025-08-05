@@ -21,6 +21,7 @@ fn parse_token(src: String, tokens: List(Token)) -> Result(List(Token), Error) {
     ">>" <> next -> parse_token(next, list.append(tokens, [token.OpShr]))
 
     ";" <> next -> parse_token(next, list.append(tokens, [token.EndLine]))
+    ":" <> next -> parse_token(next, list.append(tokens, [token.Colon]))
     "," <> next -> parse_token(next, list.append(tokens, [token.Comma]))
     "=" <> next -> parse_token(next, list.append(tokens, [token.Assign]))
 

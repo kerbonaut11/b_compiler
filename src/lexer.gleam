@@ -14,10 +14,6 @@ pub type Constant {
   IntConst(Int)
 }
 
-pub type Global {
-  Global(init_val: Constant, id: Int)
-}
-
 pub type Function {
   Function(params: List(String), body: List(Statement))
 }
@@ -29,11 +25,15 @@ pub type Statement {
   Expr(Expr)
 }
 
+pub type Extrn {
+  Extrn(mod: String, name: String, arity: Int)
+}
+
 pub type Program {
   Program(
-    globals: Dict(String, Global),
+    globals: Dict(String, Constant),
     functions: Dict(String, Function),
-    extrns: Set(String),
+    extrns: Set(Extrn),
   )
 }
 
@@ -42,12 +42,11 @@ fn add_function(program: Program, name: String, function: Function) -> Program {
 }
 
 fn add_global(program: Program, name: String, init_val: Constant) -> Program {
-  let global = Global(init_val, id: dict.size(program.globals))
-  Program(..program, globals: dict.insert(program.globals, name, global))
+  Program(..program, globals: dict.insert(program.globals, name, init_val))
 }
 
-fn add_extrn(program: Program, name: String) -> Program {
-  Program(..program, extrns: set.insert(program.extrns, name))
+fn add_extrn(program: Program, mod: String, name: String, aritry: Int) -> Program {
+  Program(..program, extrns: set.insert(program.extrns, Extrn(mod, name, aritry)))
 }
 
 pub fn parse(tokens: List(Token)) -> Result(Program, error.Error) {
@@ -82,12 +81,10 @@ fn parse_items(
       parse_items(next, add_global(program, name, IntConst(x)))
     }
 
-    [token.KwExtern, ..end] -> {
-      let #(names, next) =
-        token_utils.split_at_outside_brackets(end, token.EndLine)
-      use names <- result.try(parse_list_of_ident(names, []))
-      parse_items(next, list.fold(names, program, add_extrn))
+    [token.Ident(mod), token.Colon, token.Colon, token.Ident(name), token.IntLiteral(arity), token.EndLine, ..next] -> {
+      parse_items(next, add_extrn(program, mod, name, arity))
     }
+
     [] -> Ok(program)
     _ -> {
       echo tokens
